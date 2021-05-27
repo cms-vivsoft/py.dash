@@ -1,0 +1,14 @@
+version: '3.4'
+
+services:
+  prep:
+    image: dash-test
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    command: ["sh", "-c", "pip install debugpy -t /tmp && python /tmp/debugpy --wait-for-client --listen 0.0.0.0:8050 -m flask run --no-debugger --no-reload --host 0.0.0.0 --port 5000"]
+    ports:
+      - 5000:5000
+      - 8050:8050
+    environment:
+      - FLASK_APP=index.py
