@@ -20,6 +20,7 @@ jobs:
   # Push image to GitHub Packages.
   push:
     runs-on: ubuntu-latest
+    environment: prod
     if: github.event_name == 'push'
 
     permissions:
