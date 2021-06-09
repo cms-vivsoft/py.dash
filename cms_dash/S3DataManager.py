@@ -28,9 +28,9 @@ class S3DataManager:
 
     def _get_s3_data(self, key):
 
-        if os.getenv('LOCAL_DEV_MODE') == 1:
+        if os.getenv('LOCAL_DEV_MODE') == 'True':
             print(">>> local dev mode, reading file locally")
-            return pd.read_pickle('/home/brendan/projects/cms/r2py/df_inpatient.pkl', compression='xz')
+            return pd.read_pickle('./data/df_inpatient.pkl', compression='xz')
 
         print(">>> getting file from s3")
         obj = self.s3.get_object(Bucket=self.BUCKET_NAME, Key=key)
