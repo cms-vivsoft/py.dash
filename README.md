@@ -13,4 +13,4 @@ cd dash-test
 docker build . -t dash-test:latest
 docker run -p 8050:8050 dash-test:latest
 
-open your brower and navigate to on http://0.0.0.0:8050
+open your browser and navigate to on http://0.0.0.0:8050

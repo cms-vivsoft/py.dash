@@ -4,7 +4,6 @@ from datetime import date, datetime
 import json
 import pandas as pd
 import numpy as np
-
 import dash
 import dash_table
 import dash_core_components as dcc
@@ -12,13 +11,15 @@ import dash_html_components as html
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
 import plotly.express as px
-
+import plotly
+import plotly.graph_objects as go
 # import data_pipeline
 # import sql_queries
 # from vault.prototype_map_config import config
 from cms_dash.DataQueryHelper2 import DataQueryHelper
 from cms_dash.S3DataManager import S3DataManager
 from app import app
+from pandasql import sqldf
 
 DATA_DIRECTORY = "data/"
 
@@ -28,35 +29,74 @@ dropdown_style = {'color': 'black'}
 #     file_name=os.path.join('data', 'data_exploration_lite.csv'))
 
 s3_mgr = S3DataManager()
-df_all_raw = s3_mgr.load_data(
-    'data_exploration_lite.csv', # key name in s3 path; the bucket name was defined in S3DataManager
-    os.path.join(DATA_DIRECTORY, 'data_exploration_lite.csv') # local path
-)
-df_all = df_all_raw
+#df_inpatient = s3_mgr.load_data('df_inpatient.csv')
+df_inpatient = s3_mgr.load_data('df_inpatient.pkl')
 
 
-def graph_vessel_type():
-    plot_data = df_all.groupby(
-        ['group'])['mmsi'].nunique().reset_index()
-    fig = px.sunburst(
-        plot_data,
-        path=['group'],
-        values='mmsi',
-        color='group',
-        template='plotly_dark',
-        color_discrete_sequence=px.colors.sequential.Blues_r,
-    )
+def readmit_pctg():
+    tmpdf = df_inpatient.loc[(df_inpatient.DESYNPUF_ID != 'xxxxxxxxxx'), ['ReadmissionDays', 'DESYNPUF_ID']]
+    tmpdf['ReadmissionDays'] = tmpdf['ReadmissionDays'].dt.days
+    temp1 = sqldf("""Select (count(distinct case when ReadmissionDays <=30 then DESYNPUF_ID end)) Num,
+                  count(distinct DESYNPUF_ID) Denom
+                  from tmpdf 
+            where ReadmissionDays <> 'null' """)
+
+    x = (temp1['Num'][0]/temp1['Denom'][0]) * 100
+    x = round(x, 2)
+    x = str(x)
+    return x
+
+
+def admit_cat_counts():
+
+    tmpdf = df_inpatient.loc[(df_inpatient.ReadmissionDays.dt.days <= 30), ['AdmitCategory', 'DESYNPUF_ID', 'CLM_PMT_AMT', 'ReadmissionDays']]
+    tmpdf['ReadmissionDays'] = tmpdf['ReadmissionDays'].dt.days
+    h1 = sqldf("""
+               SELECT AdmitCategory, COUNT(distinct DESYNPUF_ID) InpatientCount, AVG(CLM_PMT_AMT) ClaimsAmount
+               FROM tmpdf WHERE ReadmissionDays <> 'null' AND ReadmissionDays <= 30
+               GROUP BY AdmitCategory
+               """)
+
+    fig = px.bar(h1,
+                 y="AdmitCategory",
+                 x="InpatientCount",
+                 orientation='h')
+
     fig.layout.update(
         margin=dict(l=2, r=2, b=2, t=2),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
         font=dict(color='white')
     )
+
     return fig
 
+def admit_cat_avgs():
+    # TODO - ask Ujval if this should be for all pts or just readmits
+    tmpdf = df_inpatient.loc[(df_inpatient.ReadmissionDays.dt.days <= 30), ['AdmitCategory', 'DESYNPUF_ID', 'CLM_PMT_AMT', 'ReadmissionDays']]
+    tmpdf['ReadmissionDays'] = tmpdf['ReadmissionDays'].dt.days
+    h1 = sqldf("""
+               SELECT AdmitCategory, COUNT(distinct DESYNPUF_ID) InpatientCount, AVG(CLM_PMT_AMT) ClaimsAmount
+               FROM tmpdf WHERE ReadmissionDays <> 'null' AND ReadmissionDays <= 30
+               GROUP BY AdmitCategory
+               """)
+
+    fig = px.bar(h1,
+                 y="AdmitCategory",
+                 x="ClaimsAmount",
+                 orientation='h')
+
+    fig.layout.update(
+        margin=dict(l=2, r=2, b=2, t=2),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='white')
+    )
+
+    return fig
 
 def graph_top_vessels():
-    vessel_data = df_all.groupby(['mmsi', 'coverage'])[
+    vessel_data = df_inpatient.groupby(['mmsi', 'coverage'])[
         'timestamp'].count().reset_index()
     top_vessels = vessel_data[vessel_data['coverage'] == 1].sort_values(
         by='timestamp', ascending=False).head(15)
@@ -78,124 +118,13 @@ def graph_top_vessels():
     return fig
 
 
-def graph_satellite_type():
-    plot_data = df_all.groupby(
-        ['industry'])['sat_id'].nunique().reset_index()
-    fig = px.sunburst(
-        plot_data,
-        path=['industry'],
-        values='sat_id',
-        color='industry',
-        template='plotly_dark',
-        color_discrete_sequence=px.colors.sequential.Greens_r
-    )
-    fig.layout.update(
-        margin=dict(r=2, b=2, t=2, l=2),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-    )
-    return fig
 
 
-def graph_top_satellites():
-    sat_data = df_all.groupby(['sat_id', 'coverage'])[
-        'mmsi'].count().reset_index()
-    top_sats = sat_data[sat_data['coverage'] == 1].sort_values(
-        by='mmsi', ascending=False).head(15)
-    top_sats = top_sats.sort_values(by='mmsi', ascending=True)
-    # bot10_sats = sat_data[sat_data['coverage'] == 1].sort_values(by='mmsi', ascending=True).head(10)
-    # bot10_sats = bot10_sats.sort_values(by='mmsi', ascending=False)
-
-    fig = px.bar(top_sats, x='mmsi', y='sat_id', orientation='h',
-                 labels={'mmsi': 'Number of Claim', 'sat_id': 'Facility ID'},
-                 template='plotly_dark',
-                 )
-    fig.update_yaxes(type='category')
-    fig.update_traces(marker_color='rgba(44, 160, 44, .3)')
-    fig.layout.update(
-        margin=dict(r=6, b=6, t=6, l=6),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-    )
-    return fig
-
-
-def map_vessels_and_sats():
-    plot_data = df_all[
-        (df_all['coverage'] == 1) | (
-            df_all['coverage'] == 0)
-    ].reset_index(drop=True).copy()
-
-    temp = plot_data[['sat_id', 'timestamp',
-                      'sat_lat', 'sat_lon', 'coverage']].copy()
-    temp.columns = ['mmsi', 'timestamp', 'lat', 'lon', 'coverage']
-    temp['type'] = [
-        'Type 1' if x == 1 else 'Type 2' for x in temp.coverage]
-    temp = temp.drop_duplicates(keep='first').reset_index(drop=True)
-
-    plot_data = plot_data[['mmsi', 'timestamp', 'lat', 'lon', 'coverage']]
-    plot_data = plot_data.drop_duplicates(keep='first').reset_index(drop=True)
-    plot_data['type'] = 'Type 0'
-
-    plot_data = plot_data.groupby(
-        ['mmsi', 'timestamp', 'type']).mean().reset_index()
-    plot_data = plot_data.append(
-        temp.groupby(['mmsi', 'timestamp', 'type']).mean().reset_index()).reset_index(drop=True)
-
-    fig = px.scatter_mapbox(
-        plot_data, lat='lat', lon='lon', color='type',
-        category_orders={
-            'type': ['Vessel', 'Type 1', 'Type 2']},
-        color_discrete_map={
-            'Type 0': 'rgba(31, 119, 180, 0.6)',
-            'Type 1': 'rgba(44, 160, 44, 0.6)',
-            'Type 2': 'rgba(148, 103, 189, 0.4)'
-        },
-        zoom=1.5, center={'lat': 26.35, 'lon': -169.2},
-        mapbox_style='carto-darkmatter',
-        template='plotly_dark'
-    )
-    fig.layout.update(
-        margin=dict(l=2, r=2, t=2, b=2),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        legend=dict(
-            yanchor='top',
-            y=0.95,
-            xanchor='right',
-            x=0.99,
-            traceorder='normal',
-            font=dict(size=12, color='white'),
-            bgcolor='rgba(255,255,255,.3)',
-            bordercolor='rgba(255,255,255,.35)',
-            borderwidth=1,
-        )
-    )
-    for i, item in enumerate(fig.data):
-        if 'Miss' in item['name']:
-            fig.data[i]['visible'] = 'legendonly'
-
-    return fig
-
-
-def graph_hits_over_time(plot_data):
-    fig = px.bar(
-        plot_data, x='timestamp', y='mmsi',
-        labels={'mmsi': 'Number of Claims', 'timestamp': 'Time'},
-        template='plotly_dark',
-    )
-    fig.update_traces(marker_color='rgba(44, 160, 44, .3)')
-    fig.layout.update(
-        margin=dict(r=6, b=6, t=6, l=6),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-    )
-    return fig
 
 
 @app.callback(
-    Output('vessel-type', 'figure'),
-    Output('top-vessels', 'figure'),
+    Output('admit_cat_counts', 'figure'),
+    Output('admit_cat_avgs', 'figure'),
     Output('top-satellites', 'figure'),
     Output('vessel-sat-map', 'figure'),
     Output('n-vessel-filter', 'children'),
@@ -264,7 +193,6 @@ def filter_vessel_type(satClickData, vesClickData, sliderValue, resetSatClicks, 
 
 
 
-
 data_explore_body = html.Div([dbc.Row(
     [
         # side bar
@@ -274,172 +202,67 @@ data_explore_body = html.Div([dbc.Row(
                 dbc.Row([
                     dbc.Col([
                         dbc.Card([
-                            dbc.CardHeader('Summary'),
+                            dbc.CardHeader('% of Patients with a secondary claim within 30 days of previous claims date'),
                             dbc.CardBody([
-                                html.P([
-                                    """
-                                    This dashboard hosts data from a 4-hour time window from 14:00 to 18:00 on January 15, 2015 for the purpose of data exploration.
-                                    """])
+                                html.P([readmit_pctg() + "%"])
                             ])
-                        ])
-                        
+                        ]),
                     ], width=12
                     )
                 ]), 
 
-                # second-row:
                 dbc.Row([
-                    dbc.Col([
+                    dbc.Col(
                         dbc.Card([
-                            dbc.CardHeader('Configurations'),
-                            dbc.CardBody([
-                                html.H6("Location"),
-                                dcc.Dropdown(
-                                    options=[
-                                        {'label': 'New York City', 'value': 'NYC'},
-                                        {'label': 'Montréal', 'value': 'MTL'},
-                                        {'label': 'San Francisco', 'value': 'SF'}
-                                    ],
-                                    multi=True,
-                                    value="MTL"
-                                ), 
-                                html.P(""),
-                                html.P(""),
-                                html.P(""),                                
-                                html.H6('''
-                                Calculation Method
-                                '''),
-                                dcc.RadioItems(
-                                    options=[
-                                        {'label': ' Linear', 'value': 'NYC'},
-                                        {'label': ' Log', 'value': 'MTL'}
-                                    ],
-                                    value='MTL',
-                                    labelStyle={'display': 'block'}
-                                )            
-
-                            ])
-                        ])                        
-                    ], width=12
+                        dbc.CardHeader('Inpatient Count'),
+                        dcc.Graph(
+                            figure=admit_cat_counts(),
+                            style={'height': '250px'},
+                            id='admit_cat_counts'
+                        )
+                        ])
                     )
-                ])                
+                ]),
+
+
             ]
             ), md=3
         ),
 
-        # body
         dbc.Col(
             dbc.Card([
                 # first-row:
                 dbc.Row([
-                    dbc.Col(
+                    dbc.Col([
                         dbc.Card([
-                            dbc.CardHeader('Total Claims Over Time'),
-                            dcc.Graph(
-                                # style={'height': '350px'},
-                                id='total-hits',
-                            )
-                        ]), width=6
-                    ),
-                    dbc.Col(
-                        dbc.Card([
-                            dbc.CardHeader('Claims Location'),
-                            dcc.Graph(
-                                id='vessel-sat-map',
-                            ),
-                            html.Div([html.H6('January 15, 2015')],style={'margin':'5px 0px 2px 10px'}),
-                            html.Div([
-                                dcc.Slider(
-                                    min=0,
-                                    max=(df_all['timestamp'].nunique() - 1),
-                                    step=None,
-                                    marks={
-                                        i:x for i, x in enumerate(sorted(pd.to_datetime(df_all['timestamp'].unique()).strftime('%H:%M')))
-                                    },
-                                    value=0,
-                                    included=False,
-                                    id='time-slider',
-                                ),
-                            ],
-                            style={'width':'95%', 'margin':'0px 2px 0px 10px'}
-                            ),
-                        ]),
-                        width=6
+                            dbc.CardHeader('Average Claims Amount of readmission patients within 30 day sof previous claims date'),
+                            dbc.CardBody([
+                                html.P([
+                                    "${:,.0f}".format(df_inpatient.loc[(df_inpatient.ReadmissionDays.dt.days <= 30), ['CLM_PMT_AMT']].mean()[0])
+                                ])
+                            ])
+                        ])
+                    ], width=12
                     )
-                ]),
-                # second-row:
+                ]), 
+
+
                 dbc.Row([
                     dbc.Col(
                         dbc.Card([
-                            dbc.CardHeader([
-                                html.Nobr(['Facility Types Distribution ({0} Total)'.format(0)], id='n-satellite-filter'),
-                                html.Nobr(
-                                    html.Button(
-                                        id='reset-satellite-type',
-                                        n_clicks=0,
-                                        children='Reset',
-                                        disabled=False,
-                                        style={'float': 'right'}
-                                    ),
-                                )
-                            ]),
-                            dcc.Graph(
-                                figure=graph_satellite_type(),
-                                style={'height': '250px'},
-                                id='satellite-type'
-                            )
-                        ]),
-                        width=6
-                    ),
-                    dbc.Col(
-                        dbc.Card([
-                            dbc.CardHeader([
-                                html.Nobr(['Claim Types Distribution ({0} Total)'.format(0)], id='n-vessel-filter'),
-                                html.Nobr(
-                                    html.Button(
-                                        id='reset-vessel-type',
-                                        n_clicks=0,
-                                        children='Reset',
-                                        disabled=False,
-                                        style={'float': 'right'}
-                                    ),
-                                )
-                            ]),
-                            dcc.Graph(
-                                style={'height': '250px'},
-                                id='vessel-type'
-                            )
-                        ]),
-                        width=6
-                    )
-                    
-                ]),
-                # third-row:
-                dbc.Row([
-                    dbc.Col(
-                        dbc.Card([
-                        dbc.CardHeader('Top Facility'),
+                        dbc.CardHeader('Average Claim Amount'),
                         dcc.Graph(
-                            figure=graph_top_satellites(),
+                            figure=admit_cat_avgs(),
                             style={'height': '250px'},
-                            id='top-satellites'
+                            id='admit_cat_avgs'
                         )
                         ])
-                    ),
-                    dbc.Col(
-                        dbc.Card([
-                        dbc.CardHeader('Top Claims'),
-                        dcc.Graph(
-                            figure=graph_top_vessels(),
-                            style={'height': '250px'},
-                            id='top-vessels'
-                        )
-                    ])
-                    )                    
+                    )
                 ])
 
-            ]), md=9
-        )
+            ]
+            ), md=3
+        ),
 
 
     ]
@@ -455,7 +278,7 @@ data_explore_header = dbc.Row([
 
 data_explore_layout = dbc.Container(children=[
     data_explore_header,
-    data_explore_body    
+    data_explore_body
 ], fluid=True, id="data-explore")
 
 

@@ -41,7 +41,7 @@ navbar = dbc.NavbarSimple(
     fluid=True,
     dark=True
 )
-   
+
 body = html.Div([
     dcc.Location(id='url', refresh=False),
     html.Div(id='page-content'),
