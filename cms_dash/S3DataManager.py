@@ -8,7 +8,6 @@ class S3DataManager:
     def __init__(self):
         self.BUCKET_NAME = 'pydash-app-data'
         self.s3 = boto3.client('s3'
-        # config=Config(signature_version='s3v4')
         )
         self.filteredSatData = False
         self.filteredVesData = False

@@ -12,8 +12,7 @@ open your browser and navigate to http://0.0.0.0:5050/
 
 ##   Run the app using docker
 ```bash
-cd dash-test
-docker build . -t dash-test:latest
-docker run -p 8050:8050 dash-test:latest
+docker build . -t cms-dash:latest
+docker run -p 8050:8050 cms-dash:latest
 ```
 open your browser and navigate to on http://0.0.0.0:8050

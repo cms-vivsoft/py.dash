@@ -25,11 +25,7 @@ DATA_DIRECTORY = "data/"
 
 dropdown_style = {'color': 'black'}
 
-# data_helper = DataQueryHelper(
-#     file_name=os.path.join('data', 'data_exploration_lite.csv'))
-
 s3_mgr = S3DataManager()
-#df_inpatient = s3_mgr.load_data('df_inpatient.csv')
 df_inpatient = s3_mgr.load_data('df_inpatient.pkl')
 
 
@@ -119,9 +115,6 @@ def graph_top_vessels():
 
 
 
-
-
-
 @app.callback(
     Output('admit_cat_counts', 'figure'),
     Output('admit_cat_avgs', 'figure'),
@@ -137,59 +130,8 @@ def graph_top_vessels():
     Input('reset-satellite-type', 'n_clicks'),
     Input('reset-vessel-type', 'n_clicks'),
 )
-def filter_vessel_type(satClickData, vesClickData, sliderValue, resetSatClicks, resetVesClicks):
-    # filter_data = data_helper.RAW_DATA.copy()
-    filter_data = df_all_raw.copy()
-
-    changed_id = [p['prop_id'] for p in dash.callback_context.triggered][0]
-
-    if 'satellite-type' in changed_id:
-        S3DataManager.filteredSatData = True
-
-    if 'reset-satellite-type' in changed_id:
-        S3DataManager.filteredSatData = False
-
-    if 'vessel-type' in changed_id:
-        S3DataManager.filteredVesData = True
-
-    if 'reset-vessel-type' in changed_id:
-        S3DataManager.filteredVesData = False
-
-    # if 'satellite-type' in changed_id and satClickData:
-    if satClickData and S3DataManager.filteredSatData:
-        click_path = satClickData['points'][0]['id']
-        filter_data = filter_data[filter_data['industry']
-                                  == click_path].reset_index(drop=True)
-
-    # if 'vessel-type' in changed_id and vesClickData:
-    if vesClickData and S3DataManager.filteredVesData:
-        click_path = vesClickData['points'][0]['id']
-        filter_data = filter_data[filter_data['group']
-                                  == click_path].reset_index(drop=True)
-
-    # get new hits figure
-    hits_fig = graph_hits_over_time(filter_data[filter_data['coverage'] == 1].groupby([
-                                    'timestamp']).count()['mmsi'].reset_index())
-
-    # filter to current time point
-    filter_time = sorted(filter_data['timestamp'].unique())[sliderValue]
-    filter_data = filter_data[filter_data['timestamp']
-                              == filter_time].reset_index(drop=True)
-
-    # data_helper.DATA = filter_data
-    df_all = filter_data
-
-    return [
-        graph_vessel_type(),
-        graph_top_vessels(),
-        graph_top_satellites(),
-        map_vessels_and_sats(),
-        'Claim Type Distribution ({0} Total)'.format(df_all['mmsi'].nunique()),
-        'Facility Type Distribution ({0} Total)'.format(
-            df_all['sat_id'].nunique()),
-        hits_fig,
-        graph_satellite_type(),
-    ]
+def filter_vessel_type():
+    return False
 
 
 
@@ -226,7 +168,7 @@ data_explore_body = html.Div([dbc.Row(
 
 
             ]
-            ), md=3
+            ), md=15
         ),
 
         dbc.Col(
@@ -261,7 +203,7 @@ data_explore_body = html.Div([dbc.Row(
                 ])
 
             ]
-            ), md=3
+            ), md=15
         ),
 
 
